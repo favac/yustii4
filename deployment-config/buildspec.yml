@@ -1,0 +1,36 @@
+version: 0.2
+
+env:
+  secrets-manager:
+    DATABASE_HOST: $SECRET_ARN:DATABASE_HOST
+    DATABASE_USER: $SECRET_ARN:DATABASE_USER
+    DATABASE_PASSWORD: $SECRET_ARN:DATABASE_PASSWORD
+    DATABASE_NAME: $SECRET_ARN:DATABASE_NAME
+    AWS_USER_POOLS_ID: $SECRET_ARN:AWS_USER_POOLS_ID
+    AWS_USER_POOLS_WEB_CLIENT_ID: $SECRET_ARN:AWS_USER_POOLS_WEB_CLIENT_ID
+
+phases:
+  install:
+    commands:
+      - curl -sL https://deb.nodesource.com/setup_14.x
+  pre_build:
+    commands:
+      - node deployment-config/environment_setter.js && cp .env src/
+      - aws --version
+      - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      - IMAGE_TAG=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
+
+  build:
+    commands:
+      - echo Building the Docker image...
+      - echo $IMAGE_TAG
+      - (docker build -t $API_YUSTII_BACKEND_REPOSITORY_URI:$IMAGE_TAG --build-arg BASE_IMAGE_URI=$BASE_IMAGE_URI --build-arg SERVER_APP_PORT=$APP_PORT -f dockerConfig/dockerfile .)
+      - docker tag $API_YUSTII_BACKEND_REPOSITORY_URI:$IMAGE_TAG $API_YUSTII_BACKEND_REPOSITORY_URI:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Pushing the Docker images...
+      - docker push $API_YUSTII_BACKEND_REPOSITORY_URI:$IMAGE_TAG
+      - printf '[{"name":"%s","imageUri":"%s"}]' $API_YUSTII_BACKEND_CONTAINER_NAME $API_YUSTII_BACKEND_REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+      - cat imagedefinitions.json
+artifacts:
+  files: imagedefinitions.json
